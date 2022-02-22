@@ -6,7 +6,7 @@ const width = 500,
   height = 500;
 
 interface iBoid {
-  id: number;
+  index: number;
   pos: p5Types.Vector;
   velocity: p5Types.Vector;
   acceleration: p5Types.Vector;
@@ -16,109 +16,101 @@ interface iBoid {
   edges: () => void;
 }
 
-function Boid(p5: p5Types) {
-  let id = Math.random();
+function Boid(p5: p5Types, index: number) {
   let pos = p5.createVector(p5.random(width), p5.random(height));
   let velocity = p5.createVector(Math.random() * 2 - 1, Math.random() * 2 - 1);
   let acceleration = p5.createVector();
-  let total = 0;
-  let maxForce = 0.1;
+  let maxForce = 0.05;
   let maxSpeed = 2;
   let perceptionRadius = 50;
+  const size = 10
 
   const show = () => {
-    p5.strokeWeight(8);
+    let theta = velocity.heading() + p5.radians(90);
+    p5.fill(200, 100);
     p5.stroke(255);
-    p5.point(pos.x, pos.y);
+    p5.push();
+    p5.translate(pos.x, pos.y);
+    p5.rotate(theta);
+    p5.line(0, 0, 0, size);
+    p5.pop();
   };
 
   const flock = (boids: iBoid[]) => {
     acceleration.set(0, 0);
+
     let alignment = align(boids);
     let coh = cohesion(boids);
     let sep = separation(boids);
+
     acceleration.add(alignment);
     acceleration.add(coh);
     acceleration.add(sep);
   };
 
-  const cohesion = (boids: iBoid[]) => {
+  interface io {
+    boids: iBoid[];
+    every: (other: iBoid, steering: p5Types.Vector) => void;
+    after?: (steering: p5Types.Vector) => void;
+  }
+
+  const mapAllBoids = ({ boids, every, after }: io) => {
     let steering = p5.createVector();
     let total = 0;
 
     for (let other of boids) {
       let d = p5.dist(pos.x, pos.y, other.pos.x, other.pos.y);
-      if (other.id !== id && d < perceptionRadius) {
+      if (other.index !== index && d < perceptionRadius) {
+        every(other, steering);
+        total++;
+      }
+    }
+    if (total > 0) {
+      steering.div(total);
+      if (after) after(steering);
+      steering.setMag(maxSpeed);
+      steering.sub(velocity);
+      steering.limit(maxForce);
+    }
+
+    return steering;
+  };
+
+  const cohesion = (boids: iBoid[]) =>
+    mapAllBoids({
+      boids,
+      every: (other, steering) => {
         steering.add(other.pos);
-        total++;
-      }
-    }
-    if (total > 0) {
-      steering.div(total);
-      steering.sub(pos);
-      steering.setMag(maxSpeed);
-      steering.sub(velocity);
-      steering.limit(maxForce);
-    }
+      },
+      after: (steering) => {
+        steering.sub(pos);
+      },
+    });
 
-    return steering;
-  };
-
-  const separation = (boids: iBoid[]) => {
-    let steering = p5.createVector();
-    let total = 0;
-
-    for (let other of boids) {
-      let d = p5.dist(pos.x, pos.y, other.pos.x, other.pos.y);
-      if (other.id !== id && d < perceptionRadius) {
+  const separation = (boids: iBoid[]) =>
+    mapAllBoids({
+      boids,
+      every: (other, steering) => {
+        let dist = p5.dist(pos.x, pos.y, other.pos.x, other.pos.y);
         let diff = p5.createVector(pos.x - other.pos.x, pos.y - other.pos.y);
-        diff.div(d);
+        diff.div(dist);
         steering.add(diff);
-        total++;
-      }
-    }
-    if (total > 0) {
-      steering.div(total);
-      steering.setMag(maxSpeed);
-      steering.sub(velocity);
-      steering.limit(maxForce);
-    }
+      },
+    });
 
-    return steering;
-  };
-
-  const align = (boids: iBoid[]) => {
-    let steering = p5.createVector();
-    let total = 0;
-
-    for (let other of boids) {
-      let d = p5.dist(pos.x, pos.y, other.pos.x, other.pos.y);
-      if (other.id !== id && d < perceptionRadius) {
+  const align = (boids: iBoid[]) =>
+    mapAllBoids({
+      boids,
+      every: (other, steering) => {
         steering.add(other.velocity);
-        total++;
-      }
-    }
-    if (total > 0) {
-      steering.div(total);
-      steering.setMag(maxSpeed);
-      steering.sub(velocity);
-      steering.limit(maxForce);
-    }
-
-    return steering;
-  };
+      },
+    });
 
   const edges = () => {
-    if (pos.x > width) {
-      pos.x = 0;
-    } else if (pos.x < 0) {
-      pos.x = width;
-    }
-    if (pos.y > height) {
-      pos.y = 0;
-    } else if (pos.y < 0) {
-      pos.y = height;
-    }
+    if (pos.x > width) pos.x = 0;
+    if (pos.x < 0) pos.x = width;
+    if (pos.y > height) pos.y = 0;
+    if (pos.y < 0) pos.y = height;
   };
 
   const update = () => {
@@ -127,7 +119,7 @@ function Boid(p5: p5Types) {
     velocity.limit(maxSpeed);
   };
 
-  return { id, pos, velocity, acceleration, show, update, flock, edges };
+  return { index, pos, velocity, acceleration, show, update, flock, edges };
 }
 
 function App() {
@@ -137,12 +129,12 @@ function App() {
     p5.createCanvas(width, height).parent(canvasParentRef);
 
     for (let i = 0; i < 100; i++) {
-      boids.push(Boid(p5));
+      boids.push(Boid(p5, i));
     }
   };
 
   const draw = (p5: p5Types) => {
-    p5.background(51);
+    p5.background(50);
     for (let boid of boids) {
       boid.edges();
       boid.flock(boids);
